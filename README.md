@@ -1,5 +1,4 @@
+<<<<<<< HEAD
+=======
 # telegram-bot
-
-Skeleton project for Telegram group management bot.
-
-Follow the instructions in the root README to deploy.
+>>>>>>> fb3fd32d7ef798d88ec1eccd99181ddca1f40edf
