@@ -112,7 +112,8 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
             "/help - this message\n"
             "/info - info about bot\n"
             "/echo <text> - bot will repeat your text\n"
-            "/setlang <zh|en> - set preferred language\n            /about - about this bot\n"
+            "/setlang <zh|en> - set preferred language\n"
+            "/about - about this bot\n"
         )
 
     # COMMAND: /info
@@ -149,22 +150,16 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
             if provided_key and provided_key == admin_key:
                 # Broadcast to same chat only for demo (if you want multi-group broadcast,
                 # store target chat ids in DB and iterate)
-                # For safety, here it replies to the admin acknowledging broadcast request
                 reply_text = f"Broadcast accepted. (Demo mode) Would send: {bmsg}"
-                # If you had a list of chats, you'd add background tasks that send to each chat
             else:
                 reply_text = "Invalid admin key. Access denied."
 
-    # if not a recognized command, fallback reply (for simple chat)
+    # fallback for non-command messages
     else:
-        # not a slash-command, simple echo-ish behavior
         if not cmd:
-            # short auto-reply for normal messages
-            # you could add more NLP or rule-based replies here
             reply_text = f"已收到: {text}" if text else "Message received."
 
     # send reply in background to keep webhook fast
     if reply_text:
         background_tasks.add_task(send_message_async, token, chat_id, reply_text)
     return {"ok": True}
-Add richer command handlers
