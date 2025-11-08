@@ -1,4 +1,8 @@
-<<<<<<< HEAD
-=======
 # telegram-bot
->>>>>>> fb3fd32d7ef798d88ec1eccd99181ddca1f40edf
+
+A skeleton project for a Telegram group management bot.
+
+Includes backend (FastAPI + Telegram API) and frontend (React + Vite).
+
+Use Railway for deployment.
+Clean README.md
