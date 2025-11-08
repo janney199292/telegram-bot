@@ -1,5 +1,6 @@
 # backend/app/main.py
 import os
+import re
 import logging
 import httpx
 from fastapi import FastAPI, Request, BackgroundTasks, HTTPException
@@ -9,28 +10,59 @@ logger = logging.getLogger("telegram_bot")
 
 app = FastAPI()
 
-# health check
+
+# ---------- Health ----------
 @app.get("/health")
 async def health():
     return {"status": "ok"}
 
-# helper to send message via Telegram HTTP API (run in background)
-async def send_message_async(token: str, chat_id: int, text: str, parse_mode: str = "Markdown"):
+
+# ---------- Utilities ----------
+def escape_markdown_v2(text: str) -> str:
+    """
+    Escape characters according to Telegram MarkdownV2 rules.
+    Characters to escape: _ * [ ] ( ) ~ ` > # + - = | { } . !
+    """
+    if not isinstance(text, str):
+        return text
+    return re.sub(r'([_*\[\]\(\)~`>#+\-=|{}\.!])', r'\\\1', text)
+
+
+async def send_message_async(token: str, chat_id: int, text: str, parse_mode: str = "MarkdownV2"):
+    """
+    Send message via Telegram HTTP API.
+    Tries with parse_mode (MarkdownV2) after escaping; on 400 will retry without parse_mode.
+    """
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text}
-    if parse_mode:
-        payload["parse_mode"] = parse_mode
     async with httpx.AsyncClient(timeout=15.0) as client:
+        # Prepare payload text depending on parse_mode
+        payload_text = text
+        if parse_mode == "MarkdownV2":
+            payload_text = escape_markdown_v2(text)
+        payload = {"chat_id": chat_id, "text": payload_text}
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
         try:
             resp = await client.post(url, json=payload)
             logger.info("sendMessage status: %s %s", resp.status_code, resp.text)
+            # If Telegram returns 400 for entity parse errors, retry without parse_mode
+            if resp.status_code == 400 and parse_mode:
+                logger.warning("Markdown parse error, retrying without parse_mode")
+                fallback = {"chat_id": chat_id, "text": text}
+                resp2 = await client.post(url, json=fallback)
+                logger.info("sendMessage fallback status: %s %s", resp2.status_code, resp2.text)
+                return resp2.json()
             return resp.json()
         except Exception as e:
             logger.exception("Failed to sendMessage: %s", e)
             return None
 
+
 def parse_command(text: str):
-    """Return (cmd, args) where cmd includes leading '/', args is remainder string or ''."""
+    """
+    Return (cmd, args) where cmd includes leading '/', args is remainder string or ''.
+    If text is not a command, returns (None, text).
+    """
     if not text:
         return (None, "")
     text = text.strip()
@@ -41,7 +73,8 @@ def parse_command(text: str):
     args = parts[1].strip() if len(parts) > 1 else ""
     return (cmd, args)
 
-# webhook endpoint that Telegram will POST updates to
+
+# ---------- Webhook ----------
 @app.post("/webhook")
 async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
     token = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -127,7 +160,6 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
     # COMMAND: /setlang
     elif cmd == "/setlang":
         if args.lower() in ("zh", "cn", "zh-cn"):
-            # in a fuller implementation you'd persist per-chat setting to DB
             reply_text = "语言已设置为中文 (zh)."
         elif args.lower() in ("en", "en-us"):
             reply_text = "Language set to English (en)."
@@ -148,9 +180,9 @@ async def receive_webhook(request: Request, background_tasks: BackgroundTasks):
             provided_key = provided_key.strip()
             bmsg = bmsg.strip()
             if provided_key and provided_key == admin_key:
-                # Broadcast to same chat only for demo (if you want multi-group broadcast,
-                # store target chat ids in DB and iterate)
+                # Demo: reply to admin acknowledging broadcast
                 reply_text = f"Broadcast accepted. (Demo mode) Would send: {bmsg}"
+                # Real implementation: fetch target chat IDs from DB and loop-send in background
             else:
                 reply_text = "Invalid admin key. Access denied."
 
